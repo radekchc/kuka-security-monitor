@@ -2,7 +2,7 @@
 import json
 import os
 import urllib.request
-import urllib.parse
+from pathlib import Path
 
 FEED_URL = (
     "https://kuka.csaf-tp.certvde.com/"
@@ -12,6 +12,8 @@ FEED_URL = (
 API = "https://api.github.com"
 REPO = os.environ["GITHUB_REPOSITORY"]
 TOKEN = os.environ["GITHUB_TOKEN"]
+
+ALERT_FILE = Path("kuka-alerts.txt")
 
 
 def request_json(url, method="GET", data=None):
@@ -33,7 +35,10 @@ def request_json(url, method="GET", data=None):
         headers["Content-Type"] = "application/json"
 
     req = urllib.request.Request(
-        url, data=payload, headers=headers, method=method
+        url,
+        data=payload,
+        headers=headers,
+        method=method
     )
 
     with urllib.request.urlopen(req, timeout=40) as response:
@@ -69,6 +74,14 @@ def get_existing_issues():
         page += 1
 
     return issues
+
+
+def save_alert(event_type, advisory_id, updated, url):
+    with ALERT_FILE.open("a", encoding="utf-8") as f:
+        f.write(
+            f"{event_type} | {advisory_id} | "
+            f"{updated} | {url}\n"
+        )
 
 
 def main():
@@ -127,6 +140,14 @@ def main():
                     "body": body
                 }
             )
+
+            save_alert(
+                "NOWY",
+                advisory_id,
+                updated,
+                advisory_url or FEED_URL
+            )
+
             print(f"NOWY: {advisory_id}")
 
         else:
@@ -141,7 +162,16 @@ def main():
                         "body": body
                     }
                 )
+
+                save_alert(
+                    "AKTUALIZACJA",
+                    advisory_id,
+                    updated,
+                    advisory_url or FEED_URL
+                )
+
                 print(f"AKTUALIZACJA: {advisory_id}")
+
             else:
                 print(f"BEZ ZMIAN: {advisory_id}")
 
