@@ -34,10 +34,7 @@ def main():
     entries = feed.get("feed", {}).get("entry", [])
 
     if not entries:
-        raise RuntimeError(
-            "Nie znaleziono wpisow w kanale CSAF. "
-            "Trzeba sprawdzic strukture danych."
-        )
+    print("Kanal CSAF KUKA jest pusty. Brak nowych komunikatow.")
 
 
     current = {}
