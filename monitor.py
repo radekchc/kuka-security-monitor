@@ -1,76 +1,151 @@
 
 import json
+import os
 import urllib.request
-from pathlib import Path
+import urllib.parse
 
 FEED_URL = (
     "https://kuka.csaf-tp.certvde.com/"
     ".well-known/csaf/white/csaf-feed-tlp-white.json"
 )
 
-STATE_FILE = Path("known_advisories.json")
+API = "https://api.github.com"
+REPO = os.environ["GITHUB_REPOSITORY"]
+TOKEN = os.environ["GITHUB_TOKEN"]
 
 
-def fetch_feed():
-    request = urllib.request.Request(
-        FEED_URL,
-        headers={"User-Agent": "KUKA-Security-Monitor/1.0"}
+def request_json(url, method="GET", data=None):
+    headers = {
+        "User-Agent": "KUKA-Security-Monitor",
+        "Accept": "application/vnd.github+json"
+    }
+
+    if url.startswith(API + "/"):
+        headers["Authorization"] = f"Bearer {TOKEN}"
+        headers["X-GitHub-Api-Version"] = "2022-11-28"
+
+    payload = (
+        json.dumps(data).encode("utf-8")
+        if data is not None else None
     )
-    with urllib.request.urlopen(request, timeout=30) as response:
+
+    if payload is not None:
+        headers["Content-Type"] = "application/json"
+
+    req = urllib.request.Request(
+        url, data=payload, headers=headers, method=method
+    )
+
+    with urllib.request.urlopen(req, timeout=40) as response:
         return json.load(response)
 
 
+def get_existing_issues():
+    issues = {}
+    page = 1
+
+    while True:
+        url = (
+            f"{API}/repos/{REPO}/issues"
+            f"?state=all&per_page=100&page={page}"
+        )
+        batch = request_json(url)
+
+        for issue in batch:
+            if "pull_request" in issue:
+                continue
+
+            body = issue.get("body") or ""
+
+            for line in body.splitlines():
+                if line.startswith("KUKA-CSAF-ID: "):
+                    advisory_id = line.split(": ", 1)[1]
+                    issues[advisory_id] = issue
+                    break
+
+        if len(batch) < 100:
+            break
+
+        page += 1
+
+    return issues
+
 
 def main():
-    feed = fetch_feed()
+    feed = request_json(FEED_URL)
 
-    print("KLUCZE JSON:", list(feed.keys()))
+    entries = feed.get("feed", {}).get("entry")
 
-    print(
-        "POCZATEK ODPOWIEDZI:",
-        json.dumps(feed, ensure_ascii=False, indent=2)[:4000]
-    )
+    if not isinstance(entries, list):
+        raise RuntimeError("Nieprawidlowa struktura CSAF.")
 
-    entries = feed.get("feed", {}).get("entry", [])
-
-    
-    entries = feed.get("feed", {}).get("entry", [])
+    print(f"Liczba komunikatow: {len(entries)}")
 
     if not entries:
-        print("Kanal CSAF KUKA jest pusty. Brak nowych komunikatow.")
+        print("Kanal KUKA jest pusty. Brak komunikatow.")
+        return
 
-    current = {}
-
-
-
-    current = {}
+    existing = get_existing_issues()
 
     for entry in entries:
         advisory_id = entry.get("id")
-        revision = entry.get("updated", "")
+        updated = entry.get("updated", "")
+        title = entry.get("title", advisory_id)
 
-        if advisory_id:
-            current[advisory_id] = revision
-
-    if STATE_FILE.exists():
-        previous = json.loads(
-            STATE_FILE.read_text(encoding="utf-8")
+        links = entry.get("link", [])
+        advisory_url = next(
+            (
+                link.get("href")
+                for link in links
+                if link.get("rel") in ("alternate", "self")
+            ),
+            ""
         )
-    else:
-        previous = {}
 
-    for advisory_id, revision in current.items():
-        if advisory_id not in previous:
+        if not advisory_id:
+            raise RuntimeError("Wpis CSAF bez identyfikatora.")
+
+        if not updated:
+            raise RuntimeError(
+                f"Brak daty aktualizacji: {advisory_id}"
+            )
+
+        body = (
+            f"KUKA-CSAF-ID: {advisory_id}\n\n"
+            f"**Komunikat:** {title}\n\n"
+            f"**Ostatnia aktualizacja:** {updated}\n\n"
+            f"**Link:** {advisory_url or FEED_URL}\n\n"
+            "Sprawdz produkty i wersje w ERP."
+        )
+
+        if advisory_id not in existing:
+            request_json(
+                f"{API}/repos/{REPO}/issues",
+                method="POST",
+                data={
+                    "title": f"[KUKA CSAF] {title}",
+                    "body": body
+                }
+            )
             print(f"NOWY: {advisory_id}")
-        elif previous[advisory_id] != revision:
-            print(f"AKTUALIZACJA: {advisory_id}")
 
-    STATE_FILE.write_text(
-        json.dumps(current, indent=2),
-        encoding="utf-8"
-    )
+        else:
+            issue = existing[advisory_id]
 
-    print(f"Sprawdzono {len(current)} komunikatow.")
+            if issue.get("body") != body:
+                request_json(
+                    f"{API}/repos/{REPO}/issues/{issue['number']}",
+                    method="PATCH",
+                    data={
+                        "title": f"[KUKA CSAF] {title}",
+                        "body": body
+                    }
+                )
+                print(f"AKTUALIZACJA: {advisory_id}")
+            else:
+                print(f"BEZ ZMIAN: {advisory_id}")
+
+    print("Monitoring KUKA zakonczony.")
 
 
 if __name__ == "__main__":
