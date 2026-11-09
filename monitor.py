@@ -33,8 +33,14 @@ def main():
 
     entries = feed.get("feed", {}).get("entry", [])
 
+    
+    entries = feed.get("feed", {}).get("entry", [])
+
     if not entries:
-    print("Kanal CSAF KUKA jest pusty. Brak nowych komunikatow.")
+        print("Kanal CSAF KUKA jest pusty. Brak nowych komunikatow.")
+
+    current = {}
+
 
 
     current = {}
