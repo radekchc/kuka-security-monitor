@@ -3,6 +3,12 @@ name: KUKA Security Monitor
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '17 7 * * *'
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   check-kuka:
@@ -18,4 +24,6 @@ jobs:
           python-version: '3.12'
 
       - name: Sprawdz komunikaty KUKA
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python monitor.py
