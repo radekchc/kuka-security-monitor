@@ -20,14 +20,17 @@ def fetch_feed():
         return json.load(response)
 
 
+
 def main():
     feed = fetch_feed()
-print("KLUCZE JSON:", list(feed.keys()))
 
-print(
-    "POCZATEK ODPOWIEDZI:",
-    json.dumps(feed, ensure_ascii=False, indent=2)[:4000]
-)
+    print("KLUCZE JSON:", list(feed.keys()))
+
+    print(
+        "POCZATEK ODPOWIEDZI:",
+        json.dumps(feed, ensure_ascii=False, indent=2)[:4000]
+    )
+
     entries = feed.get("feed", {}).get("entry", [])
 
     if not entries:
@@ -35,6 +38,7 @@ print(
             "Nie znaleziono wpisow w kanale CSAF. "
             "Trzeba sprawdzic strukture danych."
         )
+
 
     current = {}
 
